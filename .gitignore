@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+
+.env
+
+knowledge/raw/
+knowledge/articles/
+!knowledge/raw/.gitkeep
+!knowledge/articles/.gitkeep
+
+.opencode/node_modules/
+
+.pytest_cache/
+.coverage
+htmlcov/
