@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-knowledge-base/schemas/article.schema.json",
+  "title": "Knowledge article",
+  "description": "分析层落盘的单条结构化条目（knowledge/articles/{date}_{id}_v{version}.json）。可执行契约：jsonschema 库加载即可校验。",
+  "type": "object",
+  "additionalProperties": false,
+  "x-derived-from": {
+    "primary_issues": {
+      "#03": "specs/issues/03-analyzer-labeling.md",
+      "#04": "specs/issues/04-organizer-md-digest.md"
+    },
+    "spec": "AGENTS.md → 知识条目 JSON 格式",
+    "acceptance_trace": [
+      "#03「summary/tags/relevance_score 三维度齐全」→ 三字段均 required；relevance_score 取值 0-1",
+      "#03「格式符合 AGENTS.md article 规范」→ 全部字段类型/命名对齐 AGENTS 字段表",
+      "#04「relevance_score ≥ 0.4（低于 archived）」→ published 状态条件门（见 allOf）",
+      "#04「摘要 50-300 字符」→ published 状态条件门",
+      "#04「标签 1-5 个」→ tags minItems/maxItems",
+      "#04「category 在枚举值内」→ category enum",
+      "#04「不合格条目落 status + review_reason」→ review_reason 字段（AGENTS 字段表未列，按 #04 acceptance 纳入，可选）",
+      "#04「已发布条目不可覆盖，修订走 version+1」→ version minimum 1；parent_id 指向被修订版本"
+    ],
+    "conflict_resolution": "relevance_score 在 AGENTS 字段表标为可选，但 #03「三维度齐全」要求 article 产出必备 → 按 user 选定的 acceptance 来源 #03 取 required"
+  },
+  "$comment": "校验示例: python -c \"import json,jsonschema; s=json.load(open('specs/schemas/article.schema.json')); jsonschema.validate(json.load(open('article.json')), s, format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER)\"",
+  "required": [
+    "id",
+    "version",
+    "title",
+    "source_url",
+    "source",
+    "collected_at",
+    "summary",
+    "tags",
+    "category",
+    "relevance_score",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^kb-\\d{8}-\\d+$",
+      "$comment": "AGENTS.md: 格式 kb-{YYYYMMDD}-{序号}"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "$comment": "AGENTS.md: 默认 1，修订递增；#04「修订走 version+1」"
+    },
+    "parent_id": {
+      "type": ["string", "null"],
+      "$comment": "AGENTS.md: 指向被修订的前一版本 id，初版为 null（可选字段）"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://\\S+$",
+      "$comment": "AGENTS.md: 原文链接；去重键（#04 精确去重）。加 pattern 因 jsonschema 内置 uri 格式检查较宽松，pattern 保证可执行"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["github_trending", "hacker_news"],
+      "$comment": "AGENTS.md: 采集来源"
+    },
+    "collected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "$comment": "#03: summary 维度必填；长度门 50-300 见 published 条件分支（#04 审核门）"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 5,
+      "$comment": "#03 + #04: 标签 1-5 个"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["framework", "model", "tool", "paper"],
+      "$comment": "#04: 分类枚举值"
+    },
+    "relevance_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "$comment": "#03 三维度齐全 → required；取值 0-1"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "review", "published", "archived"],
+      "$comment": "AGENTS.md 状态机；#04 审核结果驱动 draft→review/published/archived"
+    },
+    "review_reason": {
+      "type": "string",
+      "$comment": "#04: 不合格条目写入；AGENTS 字段表未列，按 #04 acceptance 纳入（可选）"
+    },
+    "distributed_to": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["telegram", "feishu"] },
+      "$comment": "AGENTS.md: 已分发渠道（可选）；渠道枚举对齐 #08"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "#04 审核门：published 状态必须四条全过。base 已强制 tags(1-5) 与 category(enum)，本分支补 relevance_score≥0.4 与 summary 50-300；低于 0.4 应为 archived，未过其它门应为 review",
+      "if": {
+        "properties": { "status": { "const": "published" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "relevance_score": { "type": "number", "minimum": 0.4, "maximum": 1 },
+          "summary": { "type": "string", "minLength": 50, "maxLength": 300 }
+        }
+      }
+    }
+  ]
+}

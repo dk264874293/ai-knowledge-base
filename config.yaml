@@ -1,0 +1,38 @@
+# 运行时配置（非敏感）。敏感 Key 走 .env，不在此处。
+# 对齐 AGENTS.md → 配置文件章节。
+
+collector:
+  github_trending:
+    frequency: "0 0 * * *"   # 每日 UTC 00:00
+    limit: 25                 # Top 25
+  hacker_news:
+    frequency: "0 0 * * *"
+    limit: 50                 # Top 50
+
+analyzer:
+  summary:
+    model: "qwen-max"
+    max_tokens: 500
+  tags:
+    model: "glm-5.1"
+    max_tokens: 100
+  scoring:
+    model: "deepseek-chat"
+    max_tokens: 50
+
+distributor:
+  telegram:
+    enabled: true
+  feishu:
+    enabled: true
+  schedule: "0 23 * * *"      # 每日 UTC 23:00 = 北京 07:00
+
+# organizer 审核门
+review:
+  min_relevance_score: 0.4
+  min_summary_chars: 50
+  max_summary_chars: 300
+  min_tags: 1
+  max_tags: 5
+
+log_level: "INFO"

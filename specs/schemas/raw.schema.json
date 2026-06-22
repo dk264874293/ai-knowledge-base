@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-knowledge-base/schemas/raw.schema.json",
+  "title": "Raw collected item",
+  "description": "采集层落盘的单条原始记录（knowledge/raw/raw_{date}_{id}.json）。可执行契约：jsonschema 库加载即可校验。",
+  "type": "object",
+  "additionalProperties": false,
+  "x-derived-from": {
+    "primary_issue": "specs/issues/02-collector-github.md",
+    "spec": "AGENTS.md → Raw 数据 JSON 格式",
+    "acceptance_trace": [
+      "#02「字段符合 AGENTS.md raw 规范」→ 本 schema 全部字段",
+      "#02「Top 25 上限」→ 批次级计数约束，非单条 schema 可表达，由 collector 节点 enforced",
+      "#02「本地 source_url 去重」→ 跨记录运行时约束，非单条 schema 可表达，由 collector 节点 enforced"
+    ],
+    "out_of_scope_per_user_choice": "hacker_news metadata 分支来自 AGENTS.md raw 规范（对应 #07），#02 acceptance 仅直接覆盖 github_trending 路径"
+  },
+  "$comment": "校验示例: python -c \"import json,jsonschema; s=json.load(open('specs/schemas/raw.schema.json')); jsonschema.validate(json.load(open('raw.json')), s, format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER)\"",
+  "required": ["id", "source", "source_url", "title", "raw_content", "collected_at", "metadata"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^raw-\\d{8}-\\d+$",
+      "$comment": "#02 + AGENTS.md: 格式 raw-{YYYYMMDD}-{序号}"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["github_trending", "hacker_news"],
+      "$comment": "AGENTS.md raw 规范枚举；#02 走 github_trending，hacker_news 见 #07"
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://\\S+$",
+      "$comment": "AGENTS.md: 原文链接；同时是去重键（#02 运行时去重）。加 pattern 因 jsonschema 内置 uri 格式检查较宽松，pattern 保证可执行"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "$comment": "AGENTS.md: 条目标题（仓库全名或 HN 标题）"
+    },
+    "raw_content": {
+      "type": "string",
+      "$comment": "AGENTS.md: 原始 HTML 片段 / API 响应内容"
+    },
+    "collected_at": {
+      "type": "string",
+      "format": "date-time",
+      "$comment": "AGENTS.md: 采集时间，ISO 8601"
+    },
+    "metadata": {
+      "type": "object",
+      "$comment": "AGENTS.md: 来源特有扩展字段，结构随 source 变化（见下方 allOf 条件分支）"
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "#02 路径：GitHub Trending 的 metadata 形状（AGENTS.md raw 规范）",
+      "if": {
+        "properties": { "source": { "const": "github_trending" } },
+        "required": ["source"]
+      },
+      "then": {
+        "properties": {
+          "metadata": {
+            "type": "object",
+            "required": ["stars_today", "language", "description"],
+            "properties": {
+              "stars_today": { "type": "integer", "minimum": 0 },
+              "language": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "$comment": "#07/AGENTS.md raw 规范：Hacker News 的 metadata 形状（user 选 #02，此处仅做前向契约对齐）",
+      "if": {
+        "properties": { "source": { "const": "hacker_news" } },
+        "required": ["source"]
+      },
+      "then": {
+        "properties": {
+          "metadata": {
+            "type": "object",
+            "required": ["score", "num_comments", "author"],
+            "properties": {
+              "score": { "type": "integer", "minimum": 0 },
+              "num_comments": { "type": "integer", "minimum": 0 },
+              "author": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
