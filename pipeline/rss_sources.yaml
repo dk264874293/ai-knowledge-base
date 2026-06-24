@@ -1,0 +1,89 @@
+# 知识库 RSS 数据源清单。
+#
+# 每个 source 包含四个字段：
+#   - name:     源名称（可读，便于日志与展示）
+#   - url:      RSS feed 地址
+#   - category: 源分类（数据源维度，区别于知识条目的 category）
+#   - enabled:  是否启用采集（false 则跳过该源）
+#
+# 源分类取值：general_tech / ai_research / company_blog / chinese_community
+#             / research / open_source / industry
+#
+# 说明：本文件为数据源清单，当前尚未被 pipeline/pipeline.py 的 collect_rss()
+#       自动加载（该函数仍读取 config.yaml 中 pipeline.rss.feeds 的扁平 URL 列表）。
+#       后续接入需改造采集器读取本文件的结构化字段，并按 enabled 过滤。
+
+sources:
+  # ----- 综合技术 -----
+
+  - name: "Hacker News Best (AI 相关)"
+    url: "https://hnrss.org/best"
+    category: "general_tech"   # HN Best 全量；AI 相关度由分析 Agent 判定
+    enabled: true
+    # 注：hnrss 无"仅 AI"端点。如需严格限定 AI，可改用
+    #     https://hnrss.org/best?q=AI （关键词过滤，量会明显下降）。
+
+  - name: "Lobsters AI/ML"
+    url: "https://lobste.rs/t/ai.rss"
+    category: "general_tech"   # lobste.rs 单 tag 订阅：https://lobste.rs/t/<tag>.rss
+    enabled: true
+
+  # ----- AI 研究 -----
+
+  - name: "arXiv cs.AI"
+    url: "https://rss.arxiv.org/rss/cs.AI"
+    category: "ai_research"    # 每日 EST 午夜更新；量大但与项目领域高度相关
+    enabled: true
+
+  - name: "Reddit r/MachineLearning"
+    url: "https://www.reddit.com/r/MachineLearning/hot.rss"
+    category: "research"   # 非官方 .rss 端点；2026-04 起多次报告失效，稳定性有限
+    enabled: true
+
+  # ----- 开源 -----
+
+  - name: "Reddit r/LocalLLaMA"
+    url: "https://www.reddit.com/r/LocalLLaMA/hot.rss"
+    category: "open_source"   # 本地 LLM 开源动态；同属 Reddit 非官方 .rss，稳定性有限
+    enabled: true
+
+  # ----- 行业资讯 -----
+
+  - name: "Google AI Blog"
+    url: "https://blog.google/technology/ai/rss/"
+    category: "industry"   # Google 官方 AI 博客
+    enabled: true
+
+  - name: "The Verge (AI)"
+    url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
+    category: "industry"   # The Verge AI 频道；曾有 XML 编码问题报告，采集前需验证
+    enabled: true
+
+  # ----- 公司博客 -----
+
+  - name: "OpenAI Blog"
+    url: "https://openai.com/news/rss.xml"
+    category: "company_blog"   # 官方已恢复 RSS（旧 /blog/rss.xml 已失效）
+    enabled: true
+
+  - name: "Anthropic Research"
+    url: "https://www.anthropic.com/rss.xml"
+    category: "company_blog"   # 官方 News feed
+    enabled: true
+
+  - name: "Hugging Face Blog"
+    url: "https://huggingface.co/blog/feed.xml"
+    category: "company_blog"   # 官方博客 feed
+    enabled: true
+
+  # ----- 中文社区（默认 disabled，需先确认 RSS 可用性）-----
+
+  - name: "机器之心"
+    url: "https://www.jiqizhixin.com/rss"
+    category: "chinese_community"   # 官方/瓦斯阅读 RSS，可用性待确认
+    enabled: false
+
+  - name: "量子位"
+    url: "https://rsshub.app/qbitai"
+    category: "chinese_community"   # 无官方 RSS，依赖 RSSHub 公共实例，稳定性有限
+    enabled: false
