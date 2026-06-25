@@ -1,0 +1,76 @@
+name: Daily Collect
+
+# 每天北京时间 16:00（UTC 08:00）自动运行；同时支持手动触发
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+# 提交采集结果需要写权限
+permissions:
+  contents: write
+
+# 避免定时与手动触发重叠
+concurrency:
+  group: daily-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+
+    env:
+      # LLM 厂商路由：deepseek / qwen / openai（默认 deepseek）
+      LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # 注意：pipeline/model_client.py 读取的是 DASHSCOPE_API_KEY，
+      # 因此将仓库密钥 QWEN_API_KEY 映射到该变量
+      DASHSCOPE_API_KEY: ${{ secrets.QWEN_API_KEY }}
+      # GitHub Search API 鉴权（可选，但能提升 rate limit）
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Run pipeline
+        run: python pipeline/pipeline.py --sources github,rss --limit 20 --verbose
+
+      - name: Validate articles
+        run: python hooks/validate_json.py "knowledge/articles/*.json"
+
+      - name: Check quality
+        continue-on-error: true
+        run: python hooks/check_quality.py "knowledge/articles/*.json"
+
+      - name: Commit and push
+        run: |
+          set -e
+          # knowledge/ 被 .gitignore 忽略，需要 -f 强制添加
+          git add -f knowledge/articles/ knowledge/raw/
+
+          # 没有暂存内容则不提交（避免空 commit）
+          if git diff --cached --quiet; then
+            echo "No new articles to commit."
+            exit 0
+          fi
+
+          # 只统计本次提交「新增」的文章数（A = Added），
+          # 不是 knowledge/articles/ 下的历史总量
+          added=$(git diff --cached --name-only --diff-filter=A -- knowledge/articles/ | wc -l | tr -d ' ')
+          date=$(date -u +%Y-%m-%d)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(kb): collect ${added} new articles on ${date}"
+          git push
