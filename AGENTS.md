@@ -311,7 +311,7 @@ analyzer:
     model: "glm-5.1"
     max_tokens: 100
   scoring:
-    model: "deepseek-chat"
+    model: "deepseek-v4-flash"
     max_tokens: 50
 
 distributor:

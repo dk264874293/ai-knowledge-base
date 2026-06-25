@@ -11,9 +11,14 @@
 
 典型用法::
 
+    # 便捷：一句话调用
     from pipeline.model_client import quick_chat
-
     answer = quick_chat("用一句话介绍 LangGraph")
+
+    # 进阶：自行构造消息
+    from pipeline.model_client import create_provider, chat_with_retry
+    prov = create_provider()
+    resp = chat_with_retry(prov, messages, max_tokens=500)
 
 AGENTS.md 红线：禁止裸 ``print()``，统一 ``logging``；禁止无错误处理的外部请求。
 """
@@ -22,12 +27,24 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx
+
+# 本模块可被两种路径加载：直接运行时为顶层 ``model_client``，作为包成员时为
+# ``pipeline.model_client``。这里把两者统一为同一个模块对象，否则各自定义的
+# ``LLMError`` 会是两个不同的类，导致 ``except LLMError`` 跨调用点漏接。
+# 规则：无论先以哪个名字加载，都把另一个名字也指向当前模块。
+_mod = sys.modules.get(__name__)
+if _mod is not None:
+    if __name__ == "model_client":
+        sys.modules.setdefault("pipeline.model_client", _mod)
+    elif __name__ == "pipeline.model_client":
+        sys.modules.setdefault("model_client", _mod)
 
 # --------------------------------------------------------------------------- #
 # 常量与配置
@@ -299,6 +316,37 @@ class OpenAICompatibleProvider(LLMProvider):
 
 
 # --------------------------------------------------------------------------- #
+# Provider 工厂
+# --------------------------------------------------------------------------- #
+
+
+def create_provider(provider: Optional[str] = None) -> OpenAICompatibleProvider:
+    """创建 LLM provider 实例的工厂函数。
+
+    统一 provider 解析逻辑：构造参数 > 环境变量 ``LLM_PROVIDER`` > 默认 ``deepseek``。
+    供需要自行控制消息（而非使用 ``quick_chat``）的调用方使用，例如::
+
+        from pipeline.model_client import create_provider, chat_with_retry
+
+        prov = create_provider()
+        resp = chat_with_retry(prov, messages, max_tokens=500)
+
+    Args:
+        provider: 提供方标识（``deepseek`` / ``qwen`` / ``openai``）；
+            ``None`` 时读环境变量 ``LLM_PROVIDER``（默认 ``deepseek``）。
+
+    Returns:
+        OpenAICompatibleProvider: 初始化好的 provider 实例。
+
+    Raises:
+        LLMError: provider 不支持，或对应的 API Key 环境变量未设置。
+    """
+
+    used = provider or os.getenv("LLM_PROVIDER", "deepseek")
+    return OpenAICompatibleProvider(used)
+
+
+# --------------------------------------------------------------------------- #
 # 重试封装
 # --------------------------------------------------------------------------- #
 
@@ -381,7 +429,7 @@ def quick_chat(
     """
 
     used_provider = provider or os.getenv("LLM_PROVIDER", "deepseek")
-    prov = OpenAICompatibleProvider(used_provider)
+    prov = create_provider(used_provider)
 
     messages: list[dict[str, str]] = []
     if system:

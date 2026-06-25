@@ -1,147 +1,100 @@
 ---
 name: github-trending
 description: >-
-  抓取 GitHub Trending Top 50 并按 AI / LLM / Agent 关键词过滤，生成结构化中文摘要。
-  Use when collecting GitHub trending repos, or when user asks
-  "GitHub 上最近有什么火的项目".
+  采集 GitHub Trending 热门仓库（HTML 解析，不调 GitHub API），按 AI / LLM / Agent / ML
+  关键词过滤，输出标准化 JSON 数组 [name, url, stars, topics, description]。
+  Use when 用户提到以下任一场景：① GitHub Trending / 热门 / 热榜 / 趋势榜 / 排行榜 /
+  star 榜 / trending；② 问「最近/今天/这周 有什么火的项目」「有什么好的开源项目」
+  「有什么值得 star/关注的」「有什么新项目」「有什么 star 增长快的」「有什么好玩的」
+  「有什么值得跟进的」「GitHub 上有什么值得关注的」；③ 想发现 AI/LLM/Agent 开源项目
+  （「有什么新的 AI 项目」「最近有什么 LLM 项目/模型/框架」「有什么好的 Agent 项目」
+  「AI 开源工具推荐」「有没有好玩的 AI 项目」「AI 圈有什么新东西」）；④ 采集知识库数据
+  （「采集 GitHub」「刷一下 GitHub/trending」「补充 GitHub 数据」「搜一下 GitHub 上的 AI 项目」
+  「推荐几个 GitHub 项目」「帮我搜集一下 AI 项目」「每日 GitHub 采集」）。
+  English: "GitHub trending", "what's hot on GitHub", "trending AI repos",
+  "popular open source", "top starred repos", "what's new on GitHub".
+  不适用于已采集数据的分析总结（→ tech-summary）。
 allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - WebFetch
-  - Write
   - Bash
+  - Read
+  - Write
 ---
 
 # GitHub Trending 采集技能
 
-从 GitHub Trending 抓取 Top 50 仓库，过滤出 AI / LLM / Agent 领域项目，
-生成中文摘要并输出标准 JSON。
+从 `github.com/trending` 抓取 Top 50 仓库，过滤出 AI / LLM / Agent / ML 领域项目，
+输出标准 JSON 数组。走 HTML 解析（不调 API），失败返回空数组。
 
-## 使用场景
+## Quick start
 
-- 每日定时采集 GitHub Trending
-- 快速了解近期最受关注的 AI 开源项目
-- 用户主动询问近期 GitHub 热门 AI 项目
-- 为知识库补充 GitHub 渠道的技术动态
+```bash
+# 采集今日 Top 50（默认 daily，最多返回 AI 相关条目）
+python .opencode/skills/github-trending/scripts/scrape_trending.py
+
+# 指定时间范围 & 条数上限
+python .opencode/skills/github-trending/scripts/scrape_trending.py --since weekly --limit 30
+```
+
+输出直接打到 stdout（JSON 数组），日志走 stderr。
 
 ## 执行步骤
 
-### 1. 抓取 Trending 页面
+### 1. 运行采集脚本
 
-使用 WebFetch 请求 GitHub Trending，获取 Top 50：
+脚本 `scripts/scrape_trending.py` 完成全部工作：
 
-| 参数       | 值                                   |
-|------------|--------------------------------------|
-| URL        | `https://github.com/trending?since=daily` |
-| 备用 URL   | `https://github.com/trending?since=weekly` |
-| 超时       | 15s                                  |
-| 重试       | 3 次，指数退避 5s → 10s → 20s       |
+| 步骤       | 说明                                                        |
+|------------|-------------------------------------------------------------|
+| 抓取 HTML  | `urllib` 请求 `github.com/trending?since=daily`，超时 8s    |
+| 解析仓库   | 正则提取每个 `<article class="Box-row">` 中的 5 个字段      |
+| AI 过滤    | 按 topics + description + name 匹配 AI 关键词               |
+| 排序截断   | 按 stars 降序，截取 Top N                                   |
+| 输出 JSON  | stdout 输出 JSON 数组，失败时输出 `[]`                       |
 
-> WebFetch 超时或异常时，降级用 GitHub Search API（`sort=stars`）获取替代数据。
+> Trending 页面不展示 topics 标签，`topics` 字段可能为空数组；
+> AI 过滤同时检查 description 和 name 中的关键词。
 
-### 2. 提取核心字段
+### 2. 校验输出
 
-从每个仓库提取：
-
-| 字段        | 来源                                   |
-|-------------|----------------------------------------|
-| `name`      | 仓库全名 `owner/repo`                  |
-| `url`       | 仓库地址                                |
-| `stars`     | 总 star 数                             |
-| `language`  | 主语言                                  |
-| `topics`    | 仓库 Topics 标签                        |
-| `description` | README 摘要 / description（用于写中文摘要） |
-
-### 3. AI 相关性过滤
-
-**纳入条件**（满足任一）：
-
-- topics / description 含以下关键词（不区分大小写）：
-  `ai`、`llm`、`agent`、`rag`、`transformer`、`llama`、`qwen`、`gpt`、
-  `chatgpt`、`claude`、`gemini`、`deepseek`、`embedding`、`fine-tuning`、
-  `inference`、`vllm`、`langchain`、`autogen`、`crewai`、`ollama`、
-  `stable-diffusion`、`diffusion`、`vector-database`、`machine-learning`、
-  `deep-learning`、`nlp`
-- 属于 `machine-learning`、`deep-learning`、`nlp`、`llm`、`ai`、
-  `generative-ai` 等 GitHub Topic
-
-**排除条件**（命中即剔除）：
-
-- 名称为 `awesome-xxx` / `xxx-list` / `xxx-resources` 等纯聚合列表
-- 与 AI / LLM / Agent 领域明显无关（纯前端 UI、纯运维脚本等）
-- 已归档（archived）或长期未更新（> 2 年无提交）
-
-### 4. 本地去重
-
-采集前先扫描 `knowledge/raw/` 下已有的 `github-trending-*.json`，
-对比 `url` 字段，已存在则跳过；同一批次内 `url` 完全相同的仅保留一条。
-
-### 5. 生成中文摘要
-
-对每个保留项目生成中文摘要，遵循公式：
-
-```
-项目名 + 做什么 + 为什么值得关注
-```
-
-- **项目名**：仓库全名或常用简称
-- **做什么**：一句话说明核心功能 / 解决的问题
-- **为什么值得关注**：技术亮点、热度趋势或实用价值
-- **长度**：100–300 字，客观准确，不夸大
-
-### 6. 排序取 Top 50
-
-- 按 `stars` 降序排列
-- 截取前 **50** 条
-- 不足 50 条时按实际数量输出，不凑数、不编造
-
-### 7. 写入 JSON
-
-将结果写入：
-
-```
-knowledge/raw/github-trending-YYYY-MM-DD.json
-```
-
-## 注意事项
-
-- 真实数据：所有信息来自实际搜索结果，禁止编造
-- 中文优先：摘要统一中文；项目名、URL 保留原文
-- 聚焦 AI：严格围绕 AI / LLM / Agent，排除纯聚合仓库
-- 去重前置：采集前必须扫描本地已有数据
-
-## 输出格式
+输出必须为 JSON 数组，每条含 5 个字段：
 
 ```json
-{
-  "source": "github_trending",
-  "skill": "github-trending",
-  "collected_at": "2026-06-22T00:00:00+08:00",
-  "items": [
-    {
-      "name": "langchain-ai/langgraph",
-      "url": "https://github.com/langchain-ai/langgraph",
-      "summary": "langgraph 是 LangChain 团队推出的图式 Agent 编排框架，支持将语言 Agent 构建为可持久化的有状态图。引入 subgraph 持久化、流式 checkpoint 等能力，适合构建复杂多步推理与工具调用流程。",
-      "stars": 18000,
-      "language": "Python",
-      "topics": ["llm", "agent", "langchain", "workflow"]
-    }
-  ]
-}
+[
+  {
+    "name": "owner/repo",
+    "url": "https://github.com/owner/repo",
+    "stars": 1234,
+    "topics": ["llm", "agent"],
+    "description": "项目简介"
+  }
+]
 ```
 
-### 字段说明
+### 3. 交给 caller
 
-| 字段           | 位置  | 类型       | 说明                                  |
-|----------------|-------|------------|---------------------------------------|
-| `source`       | 顶层  | `string`   | 固定值 `github_trending`              |
-| `skill`        | 顶层  | `string`   | 固定值 `github-trending`              |
-| `collected_at` | 顶层  | `string`   | 采集时间，ISO 8601（北京时间）         |
-| `items`        | 顶层  | `array`    | 仓库条目数组（Top 50）                 |
-| `name`         | item  | `string`   | 仓库全名 `owner/repo`                 |
-| `url`          | item  | `string`   | 仓库地址                               |
-| `summary`      | item  | `string`   | 中文摘要（100–300 字）                 |
-| `stars`        | item  | `number`   | star 数                               |
-| `language`     | item  | `string`   | 主语言                                 |
-| `topics`       | item  | `string[]` | Topics 标签（1–5 个）                  |
+本技能不做去重、不落盘——只 stdout。后续环节（collector / 整理 Agent）负责持久化。
+
+## AI 关键词（部分）
+
+`ai` `llm` `agent` `ml` `machine-learning` `deep-learning` `nlp` `rag`
+`transformer` `gpt` `llama` `qwen` `deepseek` `claude` `gemini` `embedding`
+`fine-tuning` `inference` `vllm` `langchain` `langgraph` `autogen` `crewai`
+`ollama` `stable-diffusion` `generative-ai` `vector-database` ... 完整列表见
+`scripts/scrape_trending.py` → `AI_KEYWORDS`。
+
+## 边界
+
+| 做什么                         | 不做什么                              |
+|--------------------------------|---------------------------------------|
+| HTML 解析 Trending Top 50      | 不调 GitHub API（rate limit）         |
+| 按 AI 关键词过滤              | 不做去重（由 caller 处理）             |
+| stdout 输出 JSON 数组          | 不存数据库 / 不落盘                    |
+| 失败返回 `[]`，不抛异常        | 不生成中文摘要（→ tech-summary）      |
+| 单次执行 < 10s                 | 不修改已有知识库文件                   |
+
+## 参数
+
+| 参数       | 默认值   | 可选值                           | 说明           |
+|------------|----------|----------------------------------|----------------|
+| `--since`  | `daily`  | `daily` / `weekly` / `monthly`   | 时间范围       |
+| `--limit`  | `50`     | 正整数                           | 最大返回条数   |

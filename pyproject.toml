@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "AI 知识库助手：采集 → 分析 → 整理 pipeline"
 requires-python = ">=3.12"
 dependencies = [
+    "httpx>=0.27",
     "pydantic>=2.6",
     "pydantic-settings>=2",
     "pyyaml>=6",
@@ -21,7 +22,7 @@ dev = ["pytest>=8", "pytest-mock>=3"]
 kb = "src.cli:app"
 
 [tool.setuptools]
-packages = ["src"]
+packages = ["src", "pipeline"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
